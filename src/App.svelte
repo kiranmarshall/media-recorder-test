@@ -1,5 +1,7 @@
 <script lang="ts">
+  import "./app.css";
   import { onMount } from "svelte";
+  import { getSupportedMimeTypes } from "./lib/utils";
 
   function updateLogs(log: string) {
     console.log(log);
@@ -26,12 +28,18 @@
     }
 
     inputSources = (await navigator.mediaDevices.enumerateDevices()).filter((device) => {
-      return device.kind === "videoinput" && !device.label.includes("OBS");
+      return device.kind === "videoinput";
     });
     inputsFetched = true;
 
     updateLogs("input sources fetched");
   }
+
+  let mimeTypes = getSupportedMimeTypes("video");
+
+  let selectedMimetype = "Select mimeType";
+  let mimeTypeSupported = false;
+  $: mimeTypeSupported = MediaRecorder.isTypeSupported(selectedMimetype);
 
   let video: HTMLVideoElement;
   let videoStream: MediaStream;
@@ -44,9 +52,13 @@
       videoStream.getTracks().forEach((t) => t.stop());
     }
 
-    videoStream = await navigator.mediaDevices.getUserMedia({
-      video: { deviceId: selectedInput.deviceId, width, height },
-    });
+    try {
+      videoStream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: selectedInput.deviceId, width, height },
+      });
+    } catch (e) {
+      console.log(e);
+    }
     video.srcObject = videoStream;
 
     await video.play();
@@ -65,18 +77,21 @@
 
   const onStop = () => {
     console.log("stop called");
-    // const blob = new Blob(chunks, { type: "video/webm; codecs=vp09.00.21.08" });
-    const blob = new Blob(chunks, { type: "video/webm;codecs=vp9" });
+    const blob = new Blob(chunks, { type: selectedMimetype });
     chunks = [];
-    console.log("media ready");
-    console.log(URL.createObjectURL(blob));
+
+    updateLogs("media ready");
+    updateLogs(URL.createObjectURL(blob));
   };
+
+  MediaRecorder.isTypeSupported("");
 
   async function configureStream() {
     ctx = canvas.getContext("2d");
     canvasStream = canvas.captureStream();
-    // mediaRecorder = new MediaRecorder(canvasStream, { mimeType: "video/webm" });
-    mediaRecorder = new MediaRecorder(canvasStream, { mimeType: "video/webm;codecs=vp9" });
+    mediaRecorder = new MediaRecorder(canvasStream, {
+      mimeType: selectedMimetype,
+    });
 
     mediaRecorder.addEventListener("stop", onStop);
 
@@ -127,68 +142,91 @@
   }
 
   let logs: string[] = [];
+
+  function reset() {
+    logs = [];
+    selectedMimetype = "Select mimeType";
+    mimeTypeSupported = false;
+    webcamStreamReady = false;
+    recorderConfigured = false;
+    chunks = [];
+    isEncoding = false;
+    isCapturing = false;
+    captureComplete = false;
+    capturedFrames = 1;
+  }
 </script>
 
-<div class="container">
-  <aside>
+<div class="grid grid-cols-5 grow">
+  <div class="col-span-1 bg-slate-200 p-4 font-mono text-sm overflow-hiden overflow-y-scroll">
+    <p class="font-bold">logs</p>
     {#each logs as log}
-      <p class={log.includes("encoder log:") ? "encoder-log" : ""}>{log}</p>
+      <p class={log.includes("encoder log:") ? "encoder-log" : ""}>- {log}</p>
     {/each}
-  </aside>
+  </div>
 
-  <main>
-    <div>
-      {#if !inputsFetched}
-        <button on:click={getInputSources}>Get input sources</button>
-      {/if}
+  <main class="col-span-4 bg-slate-800 p-4 space-y-4">
+    <div class="contain">
+      <p class="text-slate-50 underline">Input and Stream</p>
 
-      {#if inputsFetched}
-        <select bind:value={selectedInput}>
+      <div class="flex items-start gap-4">
+        <button disabled={inputsFetched} on:click={getInputSources}>Get input sources</button>
+
+        <select class="self-stretch" disabled={!inputsFetched} bind:value={selectedInput}>
+          <option>Select input device</option>
           {#each inputSources as source (source.deviceId)}
             <option value={source}>{source.label}</option>
           {/each}
         </select>
 
-        <button on:click={startStream}>Start stream</button>
-      {/if}
-
-      {#if webcamStreamReady}
-        <button disabled={isCapturing || isEncoding} on:click={startRecording}>Start capture</button
-        >
-        <button disabled={isEncoding} on:click={endRecording}>stop capture</button>
-      {/if}
+        <button disabled={!inputsFetched} on:click={startStream}>Start stream</button>
+      </div>
     </div>
 
-    <video height={height / 4} width={width / 4} bind:this={video}><track kind="captions" /></video>
-    <canvas {height} {width} bind:this={canvas}></canvas>
+    <div class="contain">
+      <p class="text-slate-50 underline">Media Recorder Configuration</p>
+
+      <div class="flex items-start gap-4">
+        <select disabled={!webcamStreamReady} bind:value={selectedMimetype}>
+          <option>Select mimeType</option>
+          {#each mimeTypes as mimeType}
+            <option value={mimeType}>{mimeType}</option>
+          {/each}
+        </select>
+
+        <div>
+          Frames captured: {capturedFrames}
+        </div>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <button
+          disabled={isCapturing || isEncoding || !mimeTypeSupported || !webcamStreamReady}
+          on:click={startRecording}>Start capture</button
+        >
+        <button disabled={isEncoding || !webcamStreamReady} on:click={endRecording}
+          >Stop capture</button
+        >
+
+        <button on:click={reset}>Reset</button>
+      </div>
+    </div>
+    <video bind:this={video}><track kind="captions" /></video>
+
+    <canvas hidden {height} {width} bind:this={canvas}></canvas>
   </main>
 </div>
 
 <style>
-  .container {
-    display: flex;
-    flex-direction: row;
+  .contain {
+    @apply bg-slate-500 p-4 rounded-md space-y-4;
   }
 
-  aside {
-    background-color: white;
-    color: black;
-    padding: 1rem;
-    width: 200px;
-    font-size: small;
-    overflow: hidden;
-    overflow-y: scroll;
-    overflow-x: hidden;
-    height: 100vh;
+  button {
+    @apply bg-slate-50 rounded-md px-2 py-1 border border-slate-200 disabled:bg-slate-500 disabled:border-slate-600;
   }
 
-  main {
-    position: absolute;
-    width: calc(100vw - 200px);
-    left: 200px;
-  }
-
-  .encoder-log {
-    color: blue;
+  select {
+    @apply bg-slate-200 px-2 py-1;
   }
 </style>
