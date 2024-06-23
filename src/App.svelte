@@ -93,6 +93,22 @@
       mimeType: selectedMimetype,
     });
 
+    mediaRecorder.ondataavailable = ({ data }) => {
+      console.log("data available", data);
+      chunks.push(data);
+
+      // let chunkNo = 0;
+      // const link = document.createElement("a");
+      // link.href = URL.createObjectURL(data);
+      // link.download = `video_chunk_${chunkNo + 1}.webm`;
+
+      // document.body.appendChild(link);
+      // link.click();
+
+      // document.body.removeChild(link);
+      // chunkNo++;
+    };
+
     mediaRecorder.addEventListener("stop", onStop);
 
     updateLogs("media recorder configured");
@@ -103,6 +119,7 @@
   let isCapturing = false;
   let captureComplete = false;
 
+  let frameRate = 0;
   let capturedFrames = 1;
 
   async function startRecording() {
@@ -120,10 +137,13 @@
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(video, 0, 0);
 
-    console.log("captured", capturedFrames, "frames");
     capturedFrames++;
 
-    video.requestVideoFrameCallback(startRecording);
+    if (frameRate === 0) {
+      video.requestVideoFrameCallback(startRecording);
+    } else {
+      setTimeout(startRecording, 1000 / frameRate);
+    }
   }
 
   async function endRecording() {
@@ -131,11 +151,6 @@
     captureComplete = true;
     isCapturing = false;
     isEncoding = true;
-
-    mediaRecorder.ondataavailable = ({ data }) => {
-      console.log("data available", data);
-      chunks.push(data);
-    };
 
     mediaRecorder.stop();
     isEncoding = false;
@@ -158,16 +173,16 @@
 </script>
 
 <div class="grid grid-cols-5 grow">
-  <div class="col-span-1 bg-slate-200 p-4 font-mono text-sm overflow-hiden overflow-y-scroll">
+  <div class="col-span-1 p-4 overflow-y-scroll font-mono text-sm bg-slate-200 overflow-hiden">
     <p class="font-bold">logs</p>
     {#each logs as log}
       <p class={log.includes("encoder log:") ? "encoder-log" : ""}>- {log}</p>
     {/each}
   </div>
 
-  <main class="col-span-4 bg-slate-800 p-4 space-y-4">
+  <main class="col-span-4 p-4 space-y-4 bg-slate-800">
     <div class="contain">
-      <p class="text-slate-50 underline">Input and Stream</p>
+      <p class="underline text-slate-50">Input and Stream</p>
 
       <div class="flex items-start gap-4">
         <button disabled={inputsFetched} on:click={getInputSources}>Get input sources</button>
@@ -184,15 +199,20 @@
     </div>
 
     <div class="contain">
-      <p class="text-slate-50 underline">Media Recorder Configuration</p>
+      <p class="underline text-slate-50">Media Recorder Configuration</p>
+
+      <select disabled={!webcamStreamReady} bind:value={selectedMimetype}>
+        <option>Select mimeType</option>
+        {#each mimeTypes as mimeType}
+          <option value={mimeType}>{mimeType}</option>
+        {/each}
+      </select>
 
       <div class="flex items-start gap-4">
-        <select disabled={!webcamStreamReady} bind:value={selectedMimetype}>
-          <option>Select mimeType</option>
-          {#each mimeTypes as mimeType}
-            <option value={mimeType}>{mimeType}</option>
-          {/each}
-        </select>
+        <label class="flex flex-col gap-2">
+          <span>Framerate (0 = auto, 30 max)</span>
+          <input type="number" bind:value={frameRate} min="0" max="30" />
+        </label>
 
         <div>
           Frames captured: {capturedFrames}
@@ -204,6 +224,12 @@
           disabled={isCapturing || isEncoding || !mimeTypeSupported || !webcamStreamReady}
           on:click={startRecording}>Start capture</button
         >
+
+        <button
+          disabled={!isCapturing || isEncoding || !mimeTypeSupported || !webcamStreamReady}
+          on:click={() => mediaRecorder.requestData()}>Get blob</button
+        >
+
         <button disabled={isEncoding || !webcamStreamReady} on:click={endRecording}
           >Stop capture</button
         >
@@ -211,7 +237,7 @@
         <button on:click={reset}>Reset</button>
       </div>
     </div>
-    <video bind:this={video}><track kind="captions" /></video>
+    <video class="max-w-full" bind:this={video}><track kind="captions" /></video>
 
     <canvas hidden {height} {width} bind:this={canvas}></canvas>
   </main>
