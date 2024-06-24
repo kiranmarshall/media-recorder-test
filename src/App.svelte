@@ -61,7 +61,7 @@
     }
     video.srcObject = videoStream;
 
-    await video.play();
+    // await video.play();
     webcamStreamReady = true;
 
     updateLogs("stream started with " + selectedInput.label);
@@ -91,6 +91,7 @@
     canvasStream = canvas.captureStream();
     mediaRecorder = new MediaRecorder(canvasStream, {
       mimeType: selectedMimetype,
+      videoKeyFrameIntervalCount: 0,
     });
 
     mediaRecorder.ondataavailable = ({ data }) => {
@@ -237,7 +238,7 @@
         <button on:click={reset}>Reset</button>
       </div>
     </div>
-    <video class="max-w-full" bind:this={video}><track kind="captions" /></video>
+    <video class="max-w-full" bind:this={video} autoplay><track kind="captions" /></video>
 
     <canvas hidden {height} {width} bind:this={canvas}></canvas>
   </main>
