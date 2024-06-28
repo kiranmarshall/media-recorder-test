@@ -4,7 +4,16 @@
   import { getSupportedMimeTypes } from "./lib/utils";
 
   const ws = new WebSocket("ws://localhost:9000");
-  ws.onopen = () => updateLogs("websocket connection opened");
+  ws.onopen = () => {
+    socketOpen = true;
+    updateLogs("websocket connection opened");
+  };
+  ws.onclose = () => {
+    socketOpen = false;
+    updateLogs("websocket closed");
+  };
+
+  let socketOpen = false;
 
   function updateLogs(log: string) {
     console.log(log);
@@ -191,7 +200,9 @@
 
         <button disabled={!inputsFetched} on:click={startStream}>Start stream</button>
 
-        <button on:click={() => ws.send("test")}>send test ws message</button>
+        <button disabled={!socketOpen} on:click={() => ws.send("test")}
+          >{socketOpen ? "send test ws message" : "socket not open"}</button
+        >
       </div>
     </div>
 
