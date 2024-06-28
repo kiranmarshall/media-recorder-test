@@ -3,6 +3,9 @@
   import { onMount } from "svelte";
   import { getSupportedMimeTypes } from "./lib/utils";
 
+  const ws = new WebSocket("ws://localhost:9000");
+  ws.onopen = () => updateLogs("websocket connection opened");
+
   function updateLogs(log: string) {
     console.log(log);
     logs = [...logs, log];
@@ -61,7 +64,7 @@
     }
     video.srcObject = videoStream;
 
-    // await video.play();
+    await video.play();
     webcamStreamReady = true;
 
     updateLogs("stream started with " + selectedInput.label);
@@ -89,25 +92,17 @@
   async function configureStream() {
     ctx = canvas.getContext("2d");
     canvasStream = canvas.captureStream();
+
     mediaRecorder = new MediaRecorder(canvasStream, {
       mimeType: selectedMimetype,
       videoKeyFrameIntervalCount: 0,
     });
 
-    mediaRecorder.ondataavailable = ({ data }) => {
+    mediaRecorder.ondataavailable = async ({ data }) => {
       console.log("data available", data);
       chunks.push(data);
 
-      // let chunkNo = 0;
-      // const link = document.createElement("a");
-      // link.href = URL.createObjectURL(data);
-      // link.download = `video_chunk_${chunkNo + 1}.webm`;
-
-      // document.body.appendChild(link);
-      // link.click();
-
-      // document.body.removeChild(link);
-      // chunkNo++;
+      ws.send(data);
     };
 
     mediaRecorder.addEventListener("stop", onStop);
@@ -126,7 +121,6 @@
   async function startRecording() {
     if (captureComplete) return;
     if (!recorderConfigured) configureStream();
-    if (!ctx) throw new Error("No rendering context availabe");
 
     if (mediaRecorder.state === "inactive") mediaRecorder.start();
 
@@ -134,17 +128,17 @@
       isCapturing = true;
       updateLogs("capturing video stream");
     }
+  }
+
+  function drawFrame() {
+    if (!ctx) throw new Error("No rendering context availabe");
 
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(video, 0, 0);
 
-    capturedFrames++;
+    setTimeout(() => mediaRecorder.requestData(), 100);
 
-    if (frameRate === 0) {
-      video.requestVideoFrameCallback(startRecording);
-    } else {
-      setTimeout(startRecording, 1000 / frameRate);
-    }
+    capturedFrames++;
   }
 
   async function endRecording() {
@@ -196,6 +190,8 @@
         </select>
 
         <button disabled={!inputsFetched} on:click={startStream}>Start stream</button>
+
+        <button on:click={() => ws.send("test")}>send test ws message</button>
       </div>
     </div>
 
@@ -228,7 +224,7 @@
 
         <button
           disabled={!isCapturing || isEncoding || !mimeTypeSupported || !webcamStreamReady}
-          on:click={() => mediaRecorder.requestData()}>Get blob</button
+          on:click={drawFrame}>Draw frame</button
         >
 
         <button disabled={isEncoding || !webcamStreamReady} on:click={endRecording}
@@ -238,7 +234,7 @@
         <button on:click={reset}>Reset</button>
       </div>
     </div>
-    <video class="max-w-full" bind:this={video} autoplay><track kind="captions" /></video>
+    <video class="max-w-full" bind:this={video}><track kind="captions" /></video>
 
     <canvas hidden {height} {width} bind:this={canvas}></canvas>
   </main>
